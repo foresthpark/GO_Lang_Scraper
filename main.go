@@ -1,13 +1,26 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/foresthpark/learngo/mydict"
+)
 
 func main() {
-	nico := map[string]string{"name": "nico", "age": "12"}
+	dictionary := mydict.Dictionary{"first": "first word"}
+	// defintion, err := dictionary.Search("second")
+	baseWord := "hello"
 
-	for key := range nico {
-		fmt.Println(key)
+	dictionary.Add(baseWord, "First")
+	dictionary.Search(baseWord)
+
+	dictionary.Delete(baseWord)
+
+	word, err := dictionary.Search(baseWord)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println(word)
 	}
 
-	// fmt.Println(nico)
 }
