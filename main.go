@@ -1,26 +1,54 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-
-	"github.com/foresthpark/learngo/mydict"
+	"net/http"
 )
 
+type urlResult struct {
+	url    string
+	status string
+}
+
+var errRequesFailed = errors.New("request failed")
+
 func main() {
-	dictionary := mydict.Dictionary{"first": "first word"}
-	// defintion, err := dictionary.Search("second")
-	baseWord := "hello"
 
-	dictionary.Add(baseWord, "First")
-	dictionary.Search(baseWord)
+	results := make(map[string]string)
+	c := make(chan urlResult)
 
-	dictionary.Delete(baseWord)
-
-	word, err := dictionary.Search(baseWord)
-	if err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println(word)
+	urls := []string{
+		"https://www.amazon.ca/",
+		"https://www.google.com/",
+		"https://www.airbnb.ca/",
+		"https://reddit.com",
+		"https://facebook.com",
+		"https://www.youtube.com/",
+		"https://www.linkedin.com/",
 	}
 
+	for _, url := range urls {
+		go checkUrl(url, c)
+	}
+
+	for i := 0; i < len(urls); i++ {
+		result := <-c
+		results[result.url] = result.status
+	}
+
+	for url, status := range results {
+		fmt.Println(url, status)
+	}
+
+}
+
+func checkUrl(url string, c chan<- urlResult) {
+	fmt.Println("Checking: " + url)
+	resp, err := http.Get(url)
+	status := "OK"
+	if err != nil || resp.StatusCode >= 400 {
+		status = "FAILED"
+	}
+	c <- urlResult{url: url, status: status}
 }
