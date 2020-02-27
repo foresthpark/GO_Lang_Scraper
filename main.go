@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -30,18 +32,28 @@ var errRequesFailed = errors.New("request failed")
 
 func main() {
 	var jobs []extractedJob
+	c := make(chan []extractedJob)
+
 	totalPages := getPages()
 
 	for i := 0; i < totalPages; i++ {
-		extractedJobs := getPage(i)
-		jobs = append(jobs, extractedJobs...)
+		go getPage(i, c)
 	}
 
-	fmt.Println(jobs)
+	for i := 0; i < totalPages; i++ {
+		extractedJobs := <-c
+		jobs = append(jobs, extractedJobs...)
+
+	}
+
+	defer fmt.Println("All requests are successfully done")
+	writeJobs(jobs)
 }
 
-func getPage(page int) []extractedJob {
+func getPage(page int, mainC chan<- []extractedJob) {
 	var jobs []extractedJob
+	c := make(chan extractedJob)
+
 	pageURL := baseURL + "&start=" + strconv.Itoa(page*20)
 	fmt.Println("Requestiong pageURL: " + pageURL)
 	res, err := http.Get(pageURL)
@@ -53,11 +65,15 @@ func getPage(page int) []extractedJob {
 
 	searchCards := doc.Find(".jobsearch-SerpJobCard")
 	searchCards.Each(func(i int, jobcard *goquery.Selection) {
-		job := extractJobInfo(jobcard)
-		jobs = append(jobs, job)
+		go extractJobInfo(jobcard, c)
 	})
 
-	return jobs
+	for i := 0; i < searchCards.Length(); i++ {
+		job := <-c
+		jobs = append(jobs, job)
+	}
+
+	mainC <- jobs
 
 }
 
@@ -81,14 +97,14 @@ func getPages() int {
 	return pages
 }
 
-func extractJobInfo(jobcard *goquery.Selection) extractedJob {
+func extractJobInfo(jobcard *goquery.Selection, c chan<- extractedJob) {
 	id, _ := jobcard.Attr("data-jk")
 	title := cleanString(jobcard.Find(".title>a").Text())
-	company := jobcard.Find(".company").Text()
+	company := cleanString(jobcard.Find(".company").Text())
 	salary := cleanString(jobcard.Find(".salaryText").Text())
 	summary := cleanString(jobcard.Find(".summary").Text())
 
-	return extractedJob{
+	c <- extractedJob{
 		id:      id,
 		title:   title,
 		salary:  salary,
@@ -96,7 +112,26 @@ func extractJobInfo(jobcard *goquery.Selection) extractedJob {
 		summary: summary,
 	}
 
-	// fmt.Println(id, title, company, salary, summary)
+}
+
+func writeJobs(jobs []extractedJob) {
+	file, err := os.Create("jobs.csv")
+	checkErr(err)
+
+	w := csv.NewWriter(file)
+	defer w.Flush()
+
+	headers := []string{"ID", "Title", "Salary", "Company", "Summary"}
+
+	wErr := w.Write(headers)
+	checkErr(wErr)
+
+	for _, job := range jobs {
+		jobSlice := []string{"https://www.indeed.ca/viewjob?jk=" + job.id, job.title, job.salary, job.company, job.summary}
+		jwErr := w.Write(jobSlice)
+		checkErr(jwErr)
+	}
+
 }
 
 func cleanString(str string) string {
